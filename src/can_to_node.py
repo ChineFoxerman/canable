@@ -3,10 +3,11 @@
 import rospy
 from can_msgs.msg import Frame
 import can
+from geometry_msgs.msg import Twist
+import struct
 
-
-PUB_TOPIC = 'data'
-NODE_NAME = 'can_node'
+PUB_TOPIC = 'tender_bot/cmd_vel'
+NODE_NAME = 'tender_bot'
 CAN_DEVICE_NAME = 'can0'
 BUSTYPE = 'socketcan'
 I = 0
@@ -14,22 +15,29 @@ I = 0
 
 class can_bus(can.Listener):
     def __init__(self, bus):
-        self.canpub = rospy.Publisher(PUB_TOPIC, Frame, queue_size=10)
+        self.canpub = rospy.Publisher(PUB_TOPIC, Twist, queue_size=10)
         self.bus = bus
         self.notifier = can.Notifier(bus, [self])
 
     def on_message_received(self, msg):
+        cmd = Twist()
         can_frame = Frame()
         can_frame.data = msg.data
         can_frame.dlc = msg.dlc
         can_frame.id = msg.arbitration_id
-        print(can_frame.data.hex())
-        print(b'\x54'.hex())
-        if can_frame.data == b'\x54\x00\x01\x02\x03\x04\x05\x00':
-            print(True)
+        print(can_frame.data)
+        if can_frame.id == 0x5FF:
+            (mode, linear, angular, jockeyspeed)= struct.unpack('<Bhhh', can_frame.data)
+            cmd.linear.x = float(linear)/1000
+            cmd.angular.z = float(angular)/1000
+            cmd.linear.z = float(jockeyspeed)
+            print("mode %d \n"
+                  "linear %d \n"
+                  "angular %d \n"
+                  "jockey %d \n" % (mode, linear, angular, jockeyspeed))
         else:
             print(False)
-        self.canpub.publish(can_frame)
+        self.canpub.publish(cmd)
 
     def send_message(self):
         global I
@@ -47,7 +55,7 @@ if __name__ == '__main__':
     try:
         while not rospy.is_shutdown():
             can_ros = can_bus(bus)
-            can_ros.send_message()
+            # can_ros.send_message()
             r.sleep()
     except KeyboardInterrupt:
         bus.shutdown()
